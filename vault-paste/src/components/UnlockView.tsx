@@ -29,8 +29,8 @@ export function UnlockView({ isInitialized, onUnlock }: UnlockViewProps) {
       return;
     }
 
-    if (!isInitialized && password.length < 8) {
-      showToast({ type: "error", title: "密码至少需要 8 位" });
+    if (!isInitialized && password.length < 6) {
+      showToast({ type: "error", title: "密码至少需要 6 位" });
       return;
     }
 
@@ -127,7 +127,7 @@ export function UnlockView({ isInitialized, onUnlock }: UnlockViewProps) {
             <h3 className="text-sm font-medium text-text mb-2">安全提示</h3>
             <ul className="text-sm text-text-secondary space-y-1">
               <li>• 密码用于加密数据库，丢失无法恢复</li>
-              <li>• 建议密码长度至少 8 位</li>
+              <li>• 建议密码长度至少 6 位</li>
               <li>• 定期备份数据库文件</li>
             </ul>
           </div>
