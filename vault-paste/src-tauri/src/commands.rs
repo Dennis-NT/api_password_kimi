@@ -57,17 +57,34 @@ pub fn create_database(app: AppHandle, password: String) -> Result<(), String> {
 #[tauri::command]
 pub fn unlock_database(app: AppHandle, password: String) -> Result<(), String> {
     let db_path = get_db_path(&app)?;
-    
+
     if !db_path.exists() {
         return Err("Database does not exist".to_string());
     }
-    
+
     let db = Database::open(&db_path, &password)?;
-    
+
     let mut db_lock = APP_STATE.db.lock()
         .map_err(|e| format!("Failed to lock: {}", e))?;
     *db_lock = Some(db);
-    
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_database(app: AppHandle) -> Result<(), String> {
+    let db_path = get_db_path(&app)?;
+
+    if db_path.exists() {
+        std::fs::remove_file(&db_path)
+            .map_err(|e| format!("Failed to delete database: {}", e))?;
+    }
+
+    // Clear in-memory state
+    let mut db_lock = APP_STATE.db.lock()
+        .map_err(|e| format!("Failed to lock: {}", e))?;
+    *db_lock = None;
+
     Ok(())
 }
 

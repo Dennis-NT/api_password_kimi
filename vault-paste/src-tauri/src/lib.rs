@@ -54,6 +54,7 @@ pub fn run() {
             commands::check_database_exists,
             commands::create_database,
             commands::unlock_database,
+            commands::delete_database,
             commands::get_accounts,
             commands::add_account,
             commands::update_account,

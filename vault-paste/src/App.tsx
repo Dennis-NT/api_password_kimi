@@ -2,32 +2,38 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader2 } from "lucide-react";
 import { ToastProvider } from "./hooks/useToast";
-import { UnlockView } from "./components/UnlockView";
 import { MainView } from "./components/MainView";
+
+const DEFAULT_PASSWORD = "vaultpaste";
 
 function App() {
   const [isLocked, setIsLocked] = useState(true);
-  const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check if database exists
+  // Auto unlock database on startup
   useEffect(() => {
-    const checkInit = async () => {
+    const autoUnlock = async () => {
       try {
         const initialized = await invoke<boolean>("check_database_exists");
-        setIsInitialized(initialized);
+        if (initialized) {
+          try {
+            await invoke("unlock_database", { password: DEFAULT_PASSWORD });
+          } catch {
+            // Old database with different password - delete and recreate
+            await invoke("delete_database");
+            await invoke("create_database", { password: DEFAULT_PASSWORD });
+          }
+        } else {
+          await invoke("create_database", { password: DEFAULT_PASSWORD });
+        }
+        setIsLocked(false);
       } catch (error) {
-        console.error("Failed to check database:", error);
-        setIsInitialized(false);
+        console.error("Auto unlock failed:", error);
       } finally {
         setIsLoading(false);
       }
     };
-    checkInit();
-  }, []);
-
-  const handleUnlock = useCallback(() => {
-    setIsLocked(false);
+    autoUnlock();
   }, []);
 
   const handleLock = useCallback(() => {
@@ -46,10 +52,9 @@ function App() {
     <ToastProvider>
       <div className="min-h-screen bg-background">
         {isLocked ? (
-          <UnlockView 
-            isInitialized={isInitialized ?? false} 
-            onUnlock={handleUnlock} 
-          />
+          <div className="min-h-screen bg-background flex items-center justify-center">
+            <p className="text-text-secondary">无法加载数据库，请重启应用</p>
+          </div>
         ) : (
           <MainView onLock={handleLock} />
         )}
