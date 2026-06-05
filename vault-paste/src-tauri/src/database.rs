@@ -9,18 +9,18 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn new<P: AsRef<Path>>(path: P, password: &str) -> Result<Self, String> {
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let conn = Connection::open(path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
-        let crypto = CryptoManager::new(password, None)?;
+        let crypto = CryptoManager::new(None)?;
         let mut db = Self { conn, crypto };
         db.init_tables()?;
         
         Ok(db)
     }
 
-    pub fn open<P: AsRef<Path>>(path: P, password: &str) -> Result<Self, String> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let conn = Connection::open(path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
@@ -45,23 +45,7 @@ impl Database {
         let mut salt_array = [0u8; 16];
         salt_array.copy_from_slice(&salt);
 
-        let crypto = CryptoManager::new(password, Some(salt_array))?;
-        
-        // Verify password by trying to decrypt a test value
-        let test_value: Option<String> = conn
-            .query_row(
-                "SELECT value FROM metadata WHERE key = 'test'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| format!("Failed to read test value: {}", e))?;
-
-        if let Some(test) = test_value {
-            if crypto.decrypt(&test).is_err() {
-                return Err("Invalid password".to_string());
-            }
-        }
+        let crypto = CryptoManager::new(Some(salt_array))?;
 
         Ok(Self { conn, crypto })
     }
@@ -118,6 +102,14 @@ impl Database {
         Ok(())
     }
 
+    fn merge_optional(update: Option<String>, existing: Option<String>) -> Option<String> {
+        match update {
+            Some(s) if s.is_empty() => None,
+            Some(s) => Some(s),
+            None => existing,
+        }
+    }
+
     pub fn add_account(&self, account: &NewAccount) -> Result<Account, String> {
         use uuid::Uuid;
         use chrono::Utc;
@@ -125,15 +117,22 @@ impl Database {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().timestamp();
 
+        // Filter out empty strings for optional fields
+        let totp_secret = account.totp_secret.clone().filter(|s| !s.is_empty());
+        let api_key = account.api_key.clone().filter(|s| !s.is_empty());
+        let phone = account.phone.clone().filter(|s| !s.is_empty());
+        let access_token = account.access_token.clone().filter(|s| !s.is_empty());
+        let notes = account.notes.clone().filter(|s| !s.is_empty());
+
         // Encrypt sensitive fields
         let password_enc = self.crypto.encrypt(&account.password)?;
-        let totp_secret_enc = account.totp_secret.as_ref()
+        let totp_secret_enc = totp_secret.as_ref()
             .map(|s| self.crypto.encrypt(s))
             .transpose()?;
-        let api_key_enc = account.api_key.as_ref()
+        let api_key_enc = api_key.as_ref()
             .map(|s| self.crypto.encrypt(s))
             .transpose()?;
-        let access_token_enc = account.access_token.as_ref()
+        let access_token_enc = access_token.as_ref()
             .map(|s| self.crypto.encrypt(s))
             .transpose()?;
 
@@ -147,9 +146,9 @@ impl Database {
                 password_enc,
                 totp_secret_enc,
                 api_key_enc,
-                account.phone,
+                phone,
                 access_token_enc,
-                account.notes,
+                notes,
                 now,
                 now,
             ],
@@ -160,11 +159,11 @@ impl Database {
             site_name: account.site_name.clone(),
             username: account.username.clone(),
             password: account.password.clone(),
-            totp_secret: account.totp_secret.clone(),
-            api_key: account.api_key.clone(),
-            phone: account.phone.clone(),
-            access_token: account.access_token.clone(),
-            notes: account.notes.clone(),
+            totp_secret,
+            api_key,
+            phone,
+            access_token,
+            notes,
             created_at: now,
             updated_at: now,
         })
@@ -219,17 +218,17 @@ impl Database {
         let site_name = update.site_name.as_ref().unwrap_or(&existing.site_name);
         let username = update.username.as_ref().unwrap_or(&existing.username);
         let password = update.password.as_ref().unwrap_or(&existing.password);
-        let totp_secret = update.totp_secret.as_ref().or(existing.totp_secret.as_ref());
-        let api_key = update.api_key.as_ref().or(existing.api_key.as_ref());
-        let phone = update.phone.as_ref().or(existing.phone.as_ref());
-        let access_token = update.access_token.as_ref().or(existing.access_token.as_ref());
-        let notes = update.notes.as_ref().or(existing.notes.as_ref());
+        let totp_secret = Self::merge_optional(update.totp_secret.clone(), existing.totp_secret.clone());
+        let api_key = Self::merge_optional(update.api_key.clone(), existing.api_key.clone());
+        let phone = Self::merge_optional(update.phone.clone(), existing.phone.clone());
+        let access_token = Self::merge_optional(update.access_token.clone(), existing.access_token.clone());
+        let notes = Self::merge_optional(update.notes.clone(), existing.notes.clone());
 
         // Encrypt sensitive fields
         let password_enc = self.crypto.encrypt(password)?;
-        let totp_secret_enc = totp_secret.map(|s| self.crypto.encrypt(s)).transpose()?;
-        let api_key_enc = api_key.map(|s| self.crypto.encrypt(s)).transpose()?;
-        let access_token_enc = access_token.map(|s| self.crypto.encrypt(s)).transpose()?;
+        let totp_secret_enc = totp_secret.as_ref().map(|s| self.crypto.encrypt(s)).transpose()?;
+        let api_key_enc = api_key.as_ref().map(|s| self.crypto.encrypt(s)).transpose()?;
+        let access_token_enc = access_token.as_ref().map(|s| self.crypto.encrypt(s)).transpose()?;
 
         self.conn.execute(
             "UPDATE accounts SET
@@ -262,11 +261,11 @@ impl Database {
             site_name: site_name.clone(),
             username: username.clone(),
             password: password.clone(),
-            totp_secret: totp_secret.cloned(),
-            api_key: api_key.cloned(),
-            phone: phone.cloned(),
-            access_token: access_token.cloned(),
-            notes: notes.cloned(),
+            totp_secret: totp_secret.clone(),
+            api_key: api_key.clone(),
+            phone: phone.clone(),
+            access_token: access_token.clone(),
+            notes: notes.clone(),
             created_at: existing.created_at,
             updated_at: now,
         })

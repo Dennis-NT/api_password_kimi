@@ -1,14 +1,8 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
-use argon2::{
-    password_hash::{
-        rand_core::RngCore,
-        PasswordHasher, SaltString,
-    },
-    Argon2,
-};
+use rand::{rngs::OsRng, RngCore};
 use zeroize::Zeroize;
 
 pub struct CryptoManager {
@@ -24,7 +18,7 @@ impl Drop for CryptoManager {
 }
 
 impl CryptoManager {
-    pub fn new(password: &str, existing_salt: Option<[u8; 16]>) -> Result<Self, String> {
+    pub fn new(existing_salt: Option<[u8; 16]>) -> Result<Self, String> {
         let salt = match existing_salt {
             Some(s) => s,
             None => {
@@ -34,35 +28,16 @@ impl CryptoManager {
             }
         };
 
-        let key = Self::derive_key(password, &salt)?;
+        // Fixed key for apps without user-managed password
+        let mut key = [0u8; 32];
+        let fixed_key = b"vault-paste-fixed-key-for-local-only!!";
+        key.copy_from_slice(&fixed_key[..32]);
 
         Ok(Self { key, salt })
     }
 
     pub fn get_salt(&self) -> [u8; 16] {
         self.salt
-    }
-
-    fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
-        let salt_string = SaltString::encode_b64(salt)
-            .map_err(|e| format!("Failed to encode salt: {}", e))?;
-
-        let argon2 = Argon2::new(
-            argon2::Algorithm::Argon2id,
-            argon2::Version::V0x13,
-            argon2::Params::new(65536, 3, 1, Some(32))
-                .map_err(|e| format!("Invalid Argon2 params: {}", e))?,
-        );
-
-        let password_hash = argon2
-            .hash_password(password.as_bytes(), &salt_string)
-            .map_err(|e| format!("Failed to hash password: {}", e))?;
-
-        let hash = password_hash.hash.ok_or("No hash generated")?;
-        let mut key = [0u8; 32];
-        key.copy_from_slice(hash.as_ref());
-
-        Ok(key)
     }
 
     pub fn encrypt(&self, plaintext: &str) -> Result<String, String> {
@@ -113,12 +88,6 @@ impl CryptoManager {
 
         String::from_utf8(plaintext)
             .map_err(|e| format!("Invalid UTF-8: {}", e))
-    }
-
-    pub fn verify_password(&self, password: &str) -> Result<bool, String> {
-        // Try to derive key with provided password and compare
-        let test_key = Self::derive_key(password, &self.salt)?;
-        Ok(self.key == test_key)
     }
 }
 

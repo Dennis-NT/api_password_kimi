@@ -33,7 +33,7 @@ export function AccountDialog({ account, onClose, onSave }: AccountDialogProps) 
   });
 
   const [showPassword, setShowPassword] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(true);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
 
   useEffect(() => {
@@ -81,11 +81,11 @@ export function AccountDialog({ account, onClose, onSave }: AccountDialogProps) 
       site_name: formData.site_name.trim(),
       username: formData.username.trim(),
       password: formData.password,
-      totp_secret: formData.totp_secret.trim() || undefined,
-      api_key: formData.api_key.trim() || undefined,
-      phone: formData.phone.trim() || undefined,
-      access_token: formData.access_token.trim() || undefined,
-      notes: formData.notes.trim() || undefined,
+      totp_secret: formData.totp_secret.trim(),
+      api_key: formData.api_key.trim(),
+      phone: formData.phone.trim(),
+      access_token: formData.access_token.trim(),
+      notes: formData.notes.trim(),
     });
   };
 

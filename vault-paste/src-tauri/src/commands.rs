@@ -42,10 +42,10 @@ pub fn check_database_exists(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn create_database(app: AppHandle, password: String) -> Result<(), String> {
+pub fn create_database(app: AppHandle) -> Result<(), String> {
     let db_path = get_db_path(&app)?;
     
-    let db = Database::new(&db_path, &password)?;
+    let db = Database::new(&db_path)?;
     
     let mut db_lock = APP_STATE.db.lock()
         .map_err(|e| format!("Failed to lock: {}", e))?;
@@ -55,14 +55,14 @@ pub fn create_database(app: AppHandle, password: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn unlock_database(app: AppHandle, password: String) -> Result<(), String> {
+pub fn unlock_database(app: AppHandle) -> Result<(), String> {
     let db_path = get_db_path(&app)?;
 
     if !db_path.exists() {
         return Err("Database does not exist".to_string());
     }
 
-    let db = Database::open(&db_path, &password)?;
+    let db = Database::open(&db_path)?;
 
     let mut db_lock = APP_STATE.db.lock()
         .map_err(|e| format!("Failed to lock: {}", e))?;
